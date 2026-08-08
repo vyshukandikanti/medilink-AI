@@ -1,17 +1,17 @@
-]zerops:
+zerops:
   - setup: api
     build:
       base: python@3.12
       buildCommands:
-        - pip install -r health/requirements.txt
+        - pip install --target=./vendor -r health/requirements.txt
       deployFiles:
         - health
+        - vendor
     run:
       base: python@3.12
-      prepareCommands:
-        - pip install -r health/requirements.txt
+      envVariables:
+        PYTHONPATH: /var/www/vendor
       start: python3 health/app.py
       ports:
         - port: 5000
           httpSupport: true
-          
