@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>🚨 MediLink Emergency Lifesaver Card</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #F6F9FC; padding: 2rem 1rem; color: #0F172A; display: flex; justify-content: center; }
+        .card { background: #FFFFFF; border: 1px solid #E2E8F0; border-top: 5px solid #EF4444; border-radius: 12px; padding: 2rem; max-width: 480px; width: 100%; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); }
+        .header { text-align: center; margin-bottom: 1.5rem; }
+        .header i { font-size: 2.5rem; color: #EF4444; margin-bottom: 0.5rem; }
+        .header h2 { margin: 0; font-size: 1.5rem; }
+        .header p { color: #475569; font-size: 0.88rem; margin: 0.25rem 0; }
+        .details { display: flex; flex-direction: column; gap: 0.85rem; }
+        .row { display: flex; justify-content: space-between; border-bottom: 1px solid #F1F5F9; padding-bottom: 0.5rem; font-size: 0.95rem; }
+        .row span { color: #64748B; font-weight: 500; }
+        .row strong { color: #0F172A; }
+        .alert-box { background: #FEF2F2; border-left: 4px solid #EF4444; padding: 1rem; border-radius: 6px; margin-top: 1rem; color: #991B1B; font-size: 0.88rem; }
+        .alert-box strong { display: block; margin-bottom: 0.25rem; }
+        .footer { text-align: center; font-size: 0.72rem; color: #94A3B8; margin-top: 2rem; font-weight: 700; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="header">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <h2>🚨 Emergency Lifesaver Profile</h2>
+            <p>Health ID: {{ patient.health_id }}</p>
+        </div>
+        <div class="details">
+            <div class="row">
+                <span>Patient Name</span>
+                <strong>{{ patient.full_name }}</strong>
+            </div>
+            <div class="row">
+                <span>Age / Gender</span>
+                <strong>{{ patient.age }} years / {{ patient.gender }}</strong>
+            </div>
+            <div class="row">
+                <span>Blood Group</span>
+                <strong style="color:#EF4444; font-size:1.1rem;">{{ patient.blood_group }}</strong>
+            </div>
+            <div class="row">
+                <span>Emergency Contact</span>
+                <strong>{{ patient.emergency_contact or 'None' }}</strong>
+            </div>
+        </div>
+        <div class="alert-box">
+            <strong>⚠️ Critical Medical Alerts</strong>
+            <span>Allergies: {{ patient.allergies or 'None' }}</span><br>
+            <span>Chronic Diseases: {{ patient.chronic_diseases or 'None' }}</span>
+        </div>
+        <div class="footer">
+            MediLink AI • Secure Emergency Directory
+        </div>
+    </div>
+</body>
+</html>

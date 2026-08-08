@@ -9,6 +9,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from werkzeug.security import generate_password_hash, check_password_hash
+import ai_helper
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'medilink-ai-secret-key-2026')
 
@@ -380,24 +383,7 @@ def ai_summary():
     records = [dict(r) for r in cursor.fetchall()]
     conn.close()
     
-    summary_bullets = [
-        f"Patient **{patient_dict['full_name']}** ({patient_dict['age']} y/o {patient_dict['gender']}, Blood Type {patient_dict['blood_group']}) has **{len(records)} recorded visit(s)** in system.",
-        f"**Known Allergies:** {patient_dict['allergies'] if patient_dict['allergies'] != 'None' else 'No documented drug allergies.'}",
-        f"**Chronic Conditions:** {patient_dict['chronic_diseases'] if patient_dict['chronic_diseases'] != 'None' else 'No major chronic illnesses reported.'}"
-    ]
-    
-    if records:
-        latest = records[0]
-        summary_bullets.append(f"**Latest Visit ({latest['visit_date']}):** Diagnosed with *{latest['diagnosis']}* at {latest['hospital_name']}.")
-        if latest['medicines']:
-            summary_bullets.append(f"**Active Medications:** {latest['medicines']}")
-        if latest['blood_pressure']:
-            summary_bullets.append(f"**Vitals Baseline:** BP {latest['blood_pressure']} mmHg | Blood Glucose {latest['sugar_level']} mg/dL.")
-            
-        hospitals = list(set(r['hospital_name'] for r in records))
-        summary_bullets.append(f"**Hospital Coverage:** Records synced across {len(hospitals)} medical center(s): {', '.join(hospitals)}.")
-    else:
-        summary_bullets.append("No medical visits recorded yet for this patient.")
+    summary_bullets = ai_helper.get_ai_summary(patient_dict, records)
     
     return jsonify({
         'status': 'success',
@@ -412,51 +398,12 @@ def ai_drug_check():
     if not medicines_str:
         return jsonify({'status': 'error', 'message': 'Please enter medicines to check'}), 400
         
-    medicines = [m.strip() for m in re.split(r'[,+\n&]', medicines_str) if m.strip()]
+    result = ai_helper.check_drug_interactions(medicines_str)
     
-    interactions = []
-    meds_upper = [m.upper() for m in medicines]
-    
-    known_interactions = [
-        ({'WARFARIN', 'ASPIRIN'}, 'HIGH RISK', 'Combined use significantly increases severe gastrointestinal bleeding risk.'),
-        ({'METFORMIN', 'ALCOHOL'}, 'MODERATE RISK', 'Increases risk of severe lactic acidosis and hypoglycemia.'),
-        ({'LISINOPRIL', 'IBUPROFEN'}, 'MODERATE RISK', 'NSAIDs reduce the antihypertensive effect of Lisinopril and increase renal risk.'),
-        ({'AMOXICILLIN', 'METHOTREXATE'}, 'HIGH RISK', 'Amoxicillin reduces renal clearance of Methotrexate leading to toxicity.'),
-        ({'ATORVASTATIN', 'CLARITHROMYCIN'}, 'HIGH RISK', 'Clarithromycin increases plasma concentration of Atorvastatin, risking myopathy.'),
-        ({'CLOPIDOGREL', 'OMEPRAZOLE'}, 'MODERATE RISK', 'Omeprazole inhibits CYP2C19, reducing Clopidogrel efficacy.'),
-        ({'PARACETAMOL', 'AMOXICILLIN'}, 'SAFE', 'No known major drug interaction detected. Safe for concurrent use under prescribed doses.')
-    ]
-    
-    found = False
-    for group, severity, note in known_interactions:
-        if len(group) == 2:
-            g1, g2 = list(group)
-            if any(g1 in m for m in meds_upper) and any(g2 in m for m in meds_upper):
-                found = True
-                interactions.append({
-                    'combination': f"{g1} + {g2}",
-                    'severity': severity,
-                    'note': note
-                })
-                
-    if not found:
-        if len(medicines) >= 2:
-            interactions.append({
-                'combination': f"{' + '.join(medicines[:2])}",
-                'severity': 'SAFE',
-                'note': 'No severe clinical contraindications detected between these medications.'
-            })
-        else:
-            interactions.append({
-                'combination': medicines[0] if medicines else 'Single Medication',
-                'severity': 'SAFE',
-                'note': 'Single drug regimen analyzed. No adverse dual-drug combinations flagged.'
-            })
-            
     return jsonify({
         'status': 'success',
-        'medicines_analyzed': medicines,
-        'interactions': interactions
+        'medicines_analyzed': result['medicines_analyzed'],
+        'interactions': result['interactions']
     })
 
 @app.route('/api/ai/explain', methods=['POST'])
@@ -467,33 +414,12 @@ def ai_explain():
     if not text:
         return jsonify({'status': 'error', 'message': 'Please provide medical notes to explain'}), 400
         
-    explanations = {
-        'hypertension stage 1': 'Your blood pressure reading is slightly elevated above normal (130-139/80-89 mmHg). Regular aerobic exercise, lower sodium intake, and routine monitoring are recommended.',
-        'hypertension': 'High blood pressure. Your heart has to work harder to pump blood through your arteries. Medication and lifestyle tweaks keep it safe.',
-        'type 2 diabetes': 'Your body struggles to process blood sugar efficiently. Maintaining a balanced low-carb diet, exercising, and taking prescribed medication helps stabilize glucose levels.',
-        'acute asthma exacerbation': 'A sudden flare-up of asthma symptoms causing airway swelling and tightness. Rescue inhalers quickly open up airways for easier breathing.',
-        'iron deficiency anemia': 'Your body has low iron levels, resulting in fewer red blood cells to carry oxygen. Iron supplements and iron-rich foods will rebuild energy levels.',
-        'coronary artery disease': 'The blood vessels bringing oxygen to your heart muscle have narrowed. Cholesterol management and medication protect heart function.',
-        'streptococcal tonsillitis': 'A bacterial throat infection causing throat soreness and fever. Completing the full antibiotic course clears the bacteria completely.',
-        'osteoarthritis': 'Wear and tear of joint cartilage leading to stiffness or discomfort. Gentle exercise, joint gels, and pain relief support comfortable movement.',
-        'hyperlipidemia': 'Elevated cholesterol or fats in the bloodstream. Healthy diet and statin medications help maintain clear arteries.'
-    }
-    
-    text_lower = text.lower()
-    matched_explanation = None
-    
-    for key, explanation in explanations.items():
-        if key in text_lower:
-            matched_explanation = explanation
-            break
-            
-    if not matched_explanation:
-        matched_explanation = f"Medical Summary: '{text}'. Your healthcare provider evaluated these findings. All vitals and lab markers were logged for trackable longitudinal care."
+    explained = ai_helper.explain_medical_notes(text)
         
     return jsonify({
         'status': 'success',
         'original_text': text,
-        'simplified_explanation': matched_explanation
+        'simplified_explanation': explained
     })
 
 @app.route('/api/ai/smart-search', methods=['POST'])
@@ -547,114 +473,11 @@ def ai_risk_alerts(health_id):
         
     p = dict(patient)
     
-    # Fetch medical records
     cursor.execute('SELECT * FROM medical_records WHERE patient_id = ? ORDER BY visit_date DESC', (p['id'],))
     records = [dict(r) for r in cursor.fetchall()]
     conn.close()
     
-    alerts = []
-    
-    # Drug allergies check
-    allergies = [a.strip() for a in p['allergies'].split(',') if a.strip() and a.strip().lower() != 'none']
-    for allergy in allergies:
-        alerts.append({
-            'title': f"DRUG ALLERGY: {allergy.upper()}",
-            'type': 'danger',
-            'icon': 'fa-triangle-exclamation',
-            'description': f"Strictly avoid prescribing or administering {allergy}. Potential anaphylaxis / severe reaction."
-        })
-        
-    # Chronic conditions check
-    chronic = [c.strip() for c in p['chronic_diseases'].split(',') if c.strip() and c.strip().lower() != 'none']
-    for condition in chronic:
-        c_lower = condition.lower()
-        if 'diabetes' in c_lower:
-            alerts.append({
-                'title': 'CHRONIC RISK: DIABETES MELLITUS',
-                'type': 'warning',
-                'icon': 'fa-droplet',
-                'description': 'Requires continuous glycemic tracking, HbA1c monitoring, and kidney function checks.'
-            })
-        elif 'asthma' in c_lower:
-            alerts.append({
-                'title': 'RESPIRATORY RISK: ASTHMA',
-                'type': 'warning',
-                'icon': 'fa-lungs',
-                'description': 'Keep rescue inhalers accessible. Avoid Beta-blockers and NSAIDs without respiratory consultation.'
-            })
-        elif 'heart' in c_lower or 'coronary' in c_lower:
-            alerts.append({
-                'title': 'CARDIAC RISK: CARDIOVASCULAR DISEASE',
-                'type': 'danger',
-                'icon': 'fa-heart-pulse',
-                'description': 'High vulnerability for ischemic events. Lipid management & blood pressure control mandatory.'
-            })
-        elif 'hypertension' in c_lower:
-            alerts.append({
-                'title': 'VASCULAR RISK: HYPERTENSION',
-                'type': 'warning',
-                'icon': 'fa-gauge-high',
-                'description': 'Monitor blood pressure log regularly. Target baseline < 130/80 mmHg.'
-            })
-        else:
-            alerts.append({
-                'title': f"CHRONIC CONDITION: {condition.upper()}",
-                'type': 'info',
-                'icon': 'fa-notes-medical',
-                'description': f"Patient requires longitudinal care for {condition}."
-            })
-            
-    # Scan records for drug interactions
-    all_meds = []
-    for r in records:
-        if r['medicines']:
-            meds = [m.strip().upper() for m in re.split(r'[,+\n&]', r['medicines']) if m.strip()]
-            all_meds.extend(meds)
-            
-    known_interactions = [
-        ({'WARFARIN', 'ASPIRIN'}, 'HIGH RISK', 'Combined use significantly increases severe gastrointestinal bleeding risk.'),
-        ({'METFORMIN', 'ALCOHOL'}, 'MODERATE RISK', 'Increases risk of severe lactic acidosis and hypoglycemia.'),
-        ({'LISINOPRIL', 'IBUPROFEN'}, 'MODERATE RISK', 'NSAIDs reduce the antihypertensive effect of Lisinopril and increase renal risk.'),
-        ({'AMOXICILLIN', 'METHOTREXATE'}, 'HIGH RISK', 'Amoxicillin reduces renal clearance of Methotrexate leading to toxicity.'),
-        ({'ATORVASTATIN', 'CLARITHROMYCIN'}, 'HIGH RISK', 'Clarithromycin increases plasma concentration of Atorvastatin, risking myopathy.'),
-        ({'CLOPIDOGREL', 'OMEPRAZOLE'}, 'MODERATE RISK', 'Omeprazole inhibits CYP2C19, reducing Clopidogrel efficacy.')
-    ]
-    
-    detected_interactions = set()
-    for group, severity, note in known_interactions:
-        g1, g2 = list(group)
-        if any(g1 in m for m in all_meds) and any(g2 in m for m in all_meds):
-            pair_name = f"{g1} + {g2}"
-            if pair_name not in detected_interactions:
-                detected_interactions.add(pair_name)
-                alerts.append({
-                    'title': f"DRUG INTERACTION DETECTED: {pair_name}",
-                    'type': 'danger' if 'HIGH' in severity else 'warning',
-                    'icon': 'fa-circle-exclamation',
-                    'description': f"Prescription log contains active overlapping drugs. {note}"
-                })
-                
-    # Check for missing vitals
-    has_bp = False
-    has_sugar = False
-    if records:
-        latest = records[0]
-        if latest['blood_pressure'] and latest['blood_pressure'].strip() != 'N/A' and latest['blood_pressure'].strip() != '' and latest['blood_pressure'].strip() != '120/80':
-            has_bp = True
-        if latest['sugar_level'] and latest['sugar_level'].strip() != 'N/A' and latest['sugar_level'].strip() != '' and latest['sugar_level'].strip() != '95':
-            has_sugar = True
-            
-    if not records or not has_bp or not has_sugar:
-        missing_vitals = []
-        if not has_bp: missing_vitals.append("Blood Pressure")
-        if not has_sugar: missing_vitals.append("Blood Glucose")
-        
-        alerts.append({
-            'title': "INCOMPLETE VITAL SCREENING",
-            'type': 'warning',
-            'icon': 'fa-flask-vial',
-            'description': f"Missing recent custom {', '.join(missing_vitals)} measurements. Please update record vitals."
-        })
+    alerts = ai_helper.get_risk_alerts(p, records)
             
     return jsonify({
         'status': 'success',
@@ -690,19 +513,43 @@ def api_login():
     if not username or not password:
         return jsonify({'status': 'error', 'message': 'Username and password required'}), 400
         
-    import hashlib
-    password_hash = hashlib.sha256(password.encode()).hexdigest()
-    
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM users WHERE username = ? AND password_hash = ?', (username, password_hash))
+    cursor.execute('SELECT * FROM users WHERE username = ?', (username,))
     user = cursor.fetchone()
-    conn.close()
     
     if not user:
+        conn.close()
         return jsonify({'status': 'error', 'message': 'Invalid username or password'}), 401
         
     user_dict = dict(user)
+    stored_hash = user_dict['password_hash']
+    
+    is_valid = False
+    needs_upgrade = False
+    
+    # Check if modern hash format
+    if stored_hash.startswith(('scrypt:', 'pbkdf2:', 'bcrypt:')):
+        is_valid = check_password_hash(stored_hash, password)
+    else:
+        # Fallback to legacy SHA-256 for backward compatibility
+        import hashlib
+        legacy_hash = hashlib.sha256(password.encode()).hexdigest()
+        if legacy_hash == stored_hash:
+            is_valid = True
+            needs_upgrade = True
+            
+    if not is_valid:
+        conn.close()
+        return jsonify({'status': 'error', 'message': 'Invalid username or password'}), 401
+        
+    if needs_upgrade:
+        modern_hash = generate_password_hash(password)
+        cursor.execute('UPDATE users SET password_hash = ? WHERE id = ?', (modern_hash, user_dict['id']))
+        conn.commit()
+        
+    conn.close()
+    
     session['username'] = user_dict['username']
     session['role'] = user_dict['role']
     session['full_name'] = user_dict['full_name']
@@ -939,75 +786,12 @@ def public_emergency_card(health_id):
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM patients WHERE health_id = ?', (health_id,))
     p = cursor.fetchone()
-    
-    if not p:
-        conn.close()
-        return "Patient Emergency Card Not Found", 404
-        
-    patient = dict(p)
     conn.close()
     
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>🚨 MediLink Emergency Lifesaver Card</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-        <style>
-            body {{ font-family: 'Inter', sans-serif; background: #F6F9FC; padding: 2rem 1rem; color: #0F172A; display: flex; justify-content: center; }}
-            .card {{ background: #FFFFFF; border: 1px solid #E2E8F0; border-top: 5px solid #EF4444; border-radius: 12px; padding: 2rem; max-width: 480px; width: 100%; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); }}
-            .header {{ text-align: center; margin-bottom: 1.5rem; }}
-            .header i {{ font-size: 2.5rem; color: #EF4444; margin-bottom: 0.5rem; }}
-            .header h2 {{ margin: 0; font-size: 1.5rem; }}
-            .header p {{ color: #475569; font-size: 0.88rem; margin: 0.25rem 0; }}
-            .details {{ display: flex; flex-direction: column; gap: 0.85rem; }}
-            .row {{ display: flex; justify-content: space-between; border-bottom: 1px solid #F1F5F9; padding-bottom: 0.5rem; font-size: 0.95rem; }}
-            .row span {{ color: #64748B; font-weight: 500; }}
-            .row strong {{ color: #0F172A; }}
-            .alert-box {{ background: #FEF2F2; border-left: 4px solid #EF4444; padding: 1rem; border-radius: 6px; margin-top: 1rem; color: #991B1B; font-size: 0.88rem; }}
-            .alert-box strong {{ display: block; margin-bottom: 0.25rem; }}
-            .footer {{ text-align: center; font-size: 0.72rem; color: #94A3B8; margin-top: 2rem; font-weight: 700; }}
-        </style>
-    </head>
-    <body>
-        <div class="card">
-            <div class="header">
-                <i class="fa-solid fa-triangle-exclamation"></i>
-                <h2>🚨 Emergency Lifesaver Profile</h2>
-                <p>Health ID: {patient['health_id']}</p>
-            </div>
-            <div class="details">
-                <div class="row">
-                    <span>Patient Name</span>
-                    <strong>{patient['full_name']}</strong>
-                </div>
-                <div class="row">
-                    <span>Age / Gender</span>
-                    <strong>{patient['age']} years / {patient['gender']}</strong>
-                </div>
-                <div class="row">
-                    <span>Blood Group</span>
-                    <strong style="color:#EF4444; font-size:1.1rem;">{patient['blood_group']}</strong>
-                </div>
-                <div class="row">
-                    <span>Emergency Contact</span>
-                    <strong>{patient['emergency_contact'] or 'None'}</strong>
-                </div>
-            </div>
-            <div class="alert-box">
-                <strong>⚠️ Critical Medical Alerts</strong>
-                <span>Allergies: {patient['allergies'] or 'None'}</span><br>
-                <span>Chronic Diseases: {patient['chronic_diseases'] or 'None'}</span>
-            </div>
-            <div class="footer">
-                MediLink AI • Secure Emergency Directory
-            </div>
-        </div>
-    </body>
-    </html>
-    """
+    if not p:
+        return "Patient Emergency Card Not Found", 404
+        
+    return render_template('emergency.html', patient=dict(p))
 
 if __name__ == '__main__':
     init_db()
