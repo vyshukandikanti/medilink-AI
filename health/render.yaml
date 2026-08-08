@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: medilink-ai
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PORT
+        value: "10000"
+    disk:
+      name: medilink-db
+      mountPath: /app/data
+      sizeGB: 1
