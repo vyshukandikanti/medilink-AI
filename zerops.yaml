@@ -1,7 +1,6 @@
 zerops:
-  - setup:
+  - setup: 
       name: api
-      runtime: python
       build:
         base: python
         buildCommands:
