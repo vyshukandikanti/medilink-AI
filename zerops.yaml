@@ -1,1 +1,10 @@
-
+zerops:
+  - setup:
+      name: api
+      runtime: python
+      build:
+        base: python
+        buildCommands:
+          - pip install -r requirements.txt
+      deploy:
+        startCommand: gunicorn --bind 0.0.0.0:$PORT app:app
