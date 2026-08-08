@@ -1,9 +1,15 @@
 zerops:
-  - setup: 
-      name: api
-      build:
-        base: python
-        buildCommands:
-          - pip install -r requirements.txt
-      deploy:
-        startCommand: gunicorn --bind 0.0.0.0:$PORT app:app
+  - setup: api
+    build:
+      base: python@3.12
+      buildCommands:
+        - cd health
+        - pip install -r requirements.txt
+      deployFiles:
+        - health
+    run:
+      base: python@3.12
+      prepareCommands:
+        - cd /var/www/health
+        - pip install -r requirements.txt
+      start: cd /var/www/health && python3 app.py
