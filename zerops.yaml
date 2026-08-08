@@ -3,13 +3,13 @@ zerops:
     build:
       base: python@3.12
       buildCommands:
-        - cd health
-        - pip install -r requirements.txt
+        - pip install -r health/requirements.txt
       deployFiles:
         - health
     run:
       base: python@3.12
-      prepareCommands:
-        - cd /var/www/health
-        - pip install -r requirements.txt
-      start: cd /var/www/health && python3 app.py
+      start: python3 health/app.py
+      ports:
+        - port: 5000
+          httpSupport: true
+          
