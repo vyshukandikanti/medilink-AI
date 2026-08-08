@@ -13,7 +13,7 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'medilink-ai-secret-key-2026')
 
 # Check if persistent storage mount is connected, otherwise fall back to local sqlite file
-DB_DIR = '/mnt/db-storage'
+DB_DIR = '/mnt/dbstorage'
 if os.path.exists(DB_DIR):
   DB_PATH = os.path.join(DB_DIR, 'database.db')
 else:
