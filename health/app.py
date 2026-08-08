@@ -12,7 +12,12 @@ load_dotenv()
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'medilink-ai-secret-key-2026')
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'database.db')
+# Check if persistent storage mount is connected, otherwise fall back to local sqlite file
+DB_DIR = '/mnt/db-storage'
+if os.path.exists(DB_DIR):
+  DB_PATH = os.path.join(DB_DIR, 'database.db')
+else:
+  DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'database.db')
 
 def get_db():
   conn = sqlite3.connect(DB_PATH)
